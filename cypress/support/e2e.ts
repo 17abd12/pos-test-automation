@@ -15,3 +15,6 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands'
+
+// Cypress → Allure results (merged with Playwright + Newman into one report).
+import 'allure-cypress'

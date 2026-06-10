@@ -123,13 +123,21 @@ cp cypress.env.example.json cypress.env.json
 ```
 
 ```bash
-# run
+# run (each writes Allure results into allure-results/ → one merged report)
 npm run test:pw        # Playwright (UI E2E) → docs/reports/playwright + allure-results
-npm run test:cy        # Cypress headless
-npm run test:api       # Postman via Newman → docs/reports/newman.html
-npm run test:load      # k6 load test → docs/reports/k6-report.html   (needs k6 installed)
+npm run test:cy        # Cypress headless → allure-results
+npm run test:api       # Newman (25 chained API tests) → docs/reports/newman.html + allure-results
+npm run test:load      # k6 load test (auth endpoint) → docs/reports/k6-report.html
+npm run test:load:apis # k6 load test across all key GET APIs → docs/reports/k6-api-flow.html
 npm run tour           # generate docs/screenshots/*.png
-npm run report:allure  # build Allure HTML from results → docs/reports/allure  (needs Java)
+npm run report:allure  # merge ALL results → one Allure report  docs/reports/allure  (needs Java)
+npm run test:all       # Playwright + Cypress + Newman back-to-back
+```
+
+> The Newman **authz** test mints a cashier JWT in a pre-request script — for a true `403` it needs the app's secret: `npm run test:api -- --env-var jwtSecret=<app JWT_SECRET>` (without it the forged token fails signature → `401`, still asserted as "not allowed"). k6 is a separate binary (https://k6.io).
+
+### Unified Allure report
+Playwright, Cypress, and Newman all emit results into `allure-results/`; `npm run report:allure` (or CI) merges them into **one** Allure report — overview/pie, suites per framework, severity, duration, categories, and trend graphs. (k6 keeps its own HTML report.)
 ```
 
 Containers (no local install except Docker):

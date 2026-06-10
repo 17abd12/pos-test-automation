@@ -1,0 +1,1 @@
+pm.test('deleted', () => pm.expect([200,204]).to.include(pm.response.code));

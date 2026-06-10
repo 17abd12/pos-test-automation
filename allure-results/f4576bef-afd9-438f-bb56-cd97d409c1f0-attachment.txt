@@ -1,0 +1,7 @@
+// MASTER pre-request (runs before EVERY request).
+// Set one run-wide unique prefix + timestamp, once.
+if (!pm.collectionVariables.get('prefix')) {
+  const ts = Date.now();
+  pm.collectionVariables.set('ts', ts);
+  pm.collectionVariables.set('prefix', 'NEWMAN_' + ts);
+}

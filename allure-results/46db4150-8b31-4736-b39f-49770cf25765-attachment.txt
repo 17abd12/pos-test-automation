@@ -1,0 +1,1 @@
+pm.test('manager-only endpoint rejects a cashier', () => pm.expect([401,403]).to.include(pm.response.code));

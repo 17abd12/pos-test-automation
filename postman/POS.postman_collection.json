@@ -1,198 +1,346 @@
 {
   "info": {
-    "name": "POS Backend API",
-    "description": "Backend tests for the Distribution POS. Runs sequentially with Newman; the cookie jar carries the auth token after Login. Self-cleaning: creates a group + customer with a unique NEWMAN_<ts> prefix and deletes them at the end. Login uses admin/admin123 (from the environment).",
+    "name": "POS Backend API (full)",
+    "description": "25 chained backend tests for the Distribution POS. Demonstrates: master collection-level pre-request scripting, request chaining via collection variables, a JWT MINTED in a pre-request script (CryptoJS HMAC-SHA256) to test role authorization, negative/auth/validation paths, a business-rule assertion (computed balance), and full self-cleaning teardown. Cookie jar carries the admin token after Login. Everything is prefixed NEWMAN_<ts> and deleted at the end.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// MASTER pre-request (runs before EVERY request).",
+          "// Set one run-wide unique prefix + timestamp, once.",
+          "if (!pm.collectionVariables.get('prefix')) {",
+          "  const ts = Date.now();",
+          "  pm.collectionVariables.set('ts', ts);",
+          "  pm.collectionVariables.set('prefix', 'NEWMAN_' + ts);",
+          "}"
+        ]
+      }
+    }
+  ],
   "item": [
     {
-      "name": "Login (admin)",
-      "event": [
+      "name": "00 Auth & Security",
+      "item": [
         {
-          "listen": "prerequest",
-          "script": { "exec": ["pm.collectionVariables.set('ts', Date.now());"], "type": "text/javascript" }
+          "name": "Unauthenticated -> 401",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without a token', () => pm.response.to.have.status(401));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] } }
         },
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('sets token cookie', () => pm.expect(pm.cookies.has('token')).to.be.true);"
+          "name": "Invalid token -> 401",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 with a garbage token', () => pm.response.to.have.status(401));"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Cookie", "value": "token=not-a-real-jwt" }],
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+          }
+        },
+        {
+          "name": "Cashier (minted token) cannot create -> 401/403",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": [
+                "// PRE-REQUEST JWT MINT: forge a cashier HS256 token with CryptoJS.",
+                "// Mirrors how the Cypress/Playwright suites bypass auth — here used to",
+                "// prove the API rejects a non-manager. With the correct jwtSecret this",
+                "// yields a valid cashier token -> 403; with a wrong/empty secret the",
+                "// signature fails -> 401. Either way: NOT allowed (asserted below).",
+                "function b64url(wa){ return CryptoJS.enc.Base64.stringify(wa).replace(/=+$/,'').replace(/\\+/g,'-').replace(/\\//g,'_'); }",
+                "function seg(o){ return b64url(CryptoJS.enc.Utf8.parse(JSON.stringify(o))); }",
+                "const secret = pm.environment.get('jwtSecret') || pm.collectionVariables.get('jwtSecret') || 'placeholder';",
+                "const now = Math.floor(Date.now()/1000);",
+                "const jwtData = seg({alg:'HS256',typ:'JWT'}) + '.' + seg({username:'cy',name:'Cy',role:'cashier',iat:now,exp:now+3600});",
+                "const sig = b64url(CryptoJS.HmacSHA256(jwtData, secret));",
+                "pm.collectionVariables.set('cashierToken', jwtData + '.' + sig);"
+              ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('manager-only endpoint rejects a cashier', () => pm.expect([401,403]).to.include(pm.response.code));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "token={{cashierToken}}" }
             ],
-            "type": "text/javascript"
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_should_fail\",\n  \"group_id\": \"x\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+          }
+        },
+        {
+          "name": "Login (admin)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('sets token cookie', () => pm.expect(pm.cookies.has('token')).to.be.true);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
+          }
+        },
+        {
+          "name": "Me -> role manager",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('role is manager', () => pm.expect(pm.response.json().role).to.eql('manager'));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/me", "host": ["{{baseUrl}}"], "path": ["api", "me"] } }
+        }
+      ]
+    },
+    {
+      "name": "10 Groups",
+      "item": [
+        {
+          "name": "Create Group",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('groupId', pm.response.json().group.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_grp\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
+          }
+        },
+        {
+          "name": "List Groups (contains new)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('new group present', () => pm.expect(pm.response.json().groups.map(g=>g.id)).to.include(pm.collectionVariables.get('groupId')));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] } }
+        },
+        {
+          "name": "Create Group missing name -> 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
           }
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" },
-        "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
-      }
+      ]
     },
     {
-      "name": "Me (role)",
-      "event": [
+      "name": "20 Customers",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('returns a role', () => pm.expect(pm.response.json().role).to.be.ok);"
-            ],
-            "type": "text/javascript"
+          "name": "Create Customer",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('customerId', pm.response.json().customer.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_cust\",\n  \"group_id\": \"{{groupId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+          }
+        },
+        {
+          "name": "Get Customer (balance 0)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('fresh balance is 0', () => pm.expect(pm.response.json().customer.balance).to.eql(0));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] } }
+        },
+        {
+          "name": "List Customers (contains new)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('new customer present', () => pm.expect(pm.response.json().customers.map(c=>c.id)).to.include(pm.collectionVariables.get('customerId')));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] } }
+        },
+        {
+          "name": "Rename Customer (PUT)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('name updated', () => pm.expect(pm.response.json().customer.name).to.include('renamed'));"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_renamed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
+          }
+        },
+        {
+          "name": "Create Customer with opening receivable",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('customerId2', pm.response.json().customer.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_bal\",\n  \"group_id\": \"{{groupId}}\",\n  \"opening_balance\": { \"receivable\": [ { \"amount\": 1000, \"days\": 10, \"description\": \"t\" } ] }\n}" },
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+          }
+        },
+        {
+          "name": "Business rule: balance = 1000",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const c = pm.response.json().customer;",
+            "pm.test('opening receivable surfaces in balance', () => pm.expect(c.balance).to.eql(1000));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/customers/{{customerId2}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId2}}"] } }
+        },
+        {
+          "name": "Create Customer missing fields -> 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
           }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/api/me", "host": ["{{baseUrl}}"], "path": ["api", "me"] }
-      }
+      ]
     },
     {
-      "name": "Create Group",
-      "event": [
+      "name": "30 Vendors",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('201 Created', () => pm.response.to.have.status(201));",
-              "const j = pm.response.json();",
-              "pm.expect(j.group.id, 'group id').to.be.ok;",
-              "pm.collectionVariables.set('groupId', j.group.id);"
-            ],
-            "type": "text/javascript"
+          "name": "Create Vendor",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('vendorId', pm.response.json().vendor.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{prefix}}_vnd\",\n  \"group_id\": \"{{groupId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/vendors", "host": ["{{baseUrl}}"], "path": ["api", "vendors"] }
+          }
+        },
+        {
+          "name": "Get Vendor (balance 0)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('fresh payable balance is 0', () => pm.expect(pm.response.json().vendor.balance).to.eql(0));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/vendors/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "vendors", "{{vendorId}}"] } }
+        },
+        {
+          "name": "Create Vendor missing fields -> 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/vendors", "host": ["{{baseUrl}}"], "path": ["api", "vendors"] }
           }
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_grp\"\n}" },
-        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
-      }
+      ]
     },
     {
-      "name": "List Groups",
-      "event": [
+      "name": "40 Inventory",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('contains our new group', () => {",
-              "  const ids = pm.response.json().groups.map(g => g.id);",
-              "  pm.expect(ids).to.include(pm.collectionVariables.get('groupId'));",
-              "});"
-            ],
-            "type": "text/javascript"
+          "name": "Create Product",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const d = pm.response.json().data;",
+            "pm.test('returns inserted row', () => pm.expect(d).to.be.an('array').that.is.not.empty);",
+            "pm.collectionVariables.set('productId', d[0].id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"items\": [ { \"name\": \"{{prefix}}_prod\", \"costPrice\": 10, \"sale_price\": 15, \"units\": 0, \"group_id\": \"{{groupId}}\", \"pieces_per_carton\": 12 } ]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/inventory", "host": ["{{baseUrl}}"], "path": ["api", "inventory"] }
+          }
+        },
+        {
+          "name": "List Inventory (contains new)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('new product present', () => pm.expect(pm.response.json().items.map(i=>i.id)).to.include(pm.collectionVariables.get('productId')));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/inventory", "host": ["{{baseUrl}}"], "path": ["api", "inventory"] } }
+        },
+        {
+          "name": "Create Product no items -> 400",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"items\": []\n}" },
+            "url": { "raw": "{{baseUrl}}/api/inventory", "host": ["{{baseUrl}}"], "path": ["api", "inventory"] }
           }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
-      }
+      ]
     },
     {
-      "name": "Create Customer",
-      "event": [
+      "name": "99 Cleanup (teardown)",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('201 Created', () => pm.response.to.have.status(201));",
-              "const j = pm.response.json();",
-              "pm.collectionVariables.set('customerId', j.customer.id);"
-            ],
-            "type": "text/javascript"
+          "name": "Delete Product",
+          "event": [{ "listen": "test", "script": { "exec": [ "pm.test('deleted', () => pm.expect([200,204]).to.include(pm.response.code));" ] } }],
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/api/inventory/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "inventory", "{{productId}}"] } }
+        },
+        {
+          "name": "Delete Vendor",
+          "event": [{ "listen": "test", "script": { "exec": [ "pm.test('deleted', () => pm.response.to.have.status(200));" ] } }],
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/api/vendors/{{vendorId}}", "host": ["{{baseUrl}}"], "path": ["api", "vendors", "{{vendorId}}"] } }
+        },
+        {
+          "name": "Delete Customer 2",
+          "event": [{ "listen": "test", "script": { "exec": [ "pm.test('deleted', () => pm.response.to.have.status(200));" ] } }],
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/api/customers/{{customerId2}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId2}}"] } }
+        },
+        {
+          "name": "Delete Customer",
+          "event": [{ "listen": "test", "script": { "exec": [ "pm.test('deleted', () => pm.response.to.have.status(200));" ] } }],
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] } }
+        },
+        {
+          "name": "Delete Group",
+          "event": [{ "listen": "test", "script": { "exec": [ "pm.test('deleted', () => pm.response.to.have.status(200));" ] } }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{groupId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
           }
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_cust\",\n  \"group_id\": \"{{groupId}}\"\n}" },
-        "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
-      }
-    },
-    {
-      "name": "Get Customer (balance 0)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('fresh customer has zero balance', () => pm.expect(pm.response.json().customer.balance).to.eql(0));"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
-      }
-    },
-    {
-      "name": "Rename Customer",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('name updated', () => pm.expect(pm.response.json().customer.name).to.include('renamed'));"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "PUT",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_renamed\"\n}" },
-        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
-      }
-    },
-    {
-      "name": "Delete Customer (cleanup)",
-      "event": [
-        {
-          "listen": "test",
-          "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" }
-        }
-      ],
-      "request": {
-        "method": "DELETE",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
-      }
-    },
-    {
-      "name": "Delete Group (cleanup)",
-      "event": [
-        {
-          "listen": "test",
-          "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" }
-        }
-      ],
-      "request": {
-        "method": "DELETE",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{groupId}}\"\n}" },
-        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
-      }
+      ]
     }
   ],
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "prefix", "value": "" },
     { "key": "ts", "value": "" },
     { "key": "groupId", "value": "" },
-    { "key": "customerId", "value": "" }
+    { "key": "customerId", "value": "" },
+    { "key": "customerId2", "value": "" },
+    { "key": "vendorId", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "cashierToken", "value": "" }
   ]
 }

@@ -1,0 +1,1 @@
+pm.test('401 with a garbage token', () => pm.response.to.have.status(401));

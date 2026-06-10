@@ -1,0 +1,2 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+pm.test('name updated', () => pm.expect(pm.response.json().customer.name).to.include('renamed'));

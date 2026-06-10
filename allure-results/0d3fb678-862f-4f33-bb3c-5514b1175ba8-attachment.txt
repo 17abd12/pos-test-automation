@@ -1,0 +1,2 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+pm.test('new product present', () => pm.expect(pm.response.json().items.map(i=>i.id)).to.include(pm.collectionVariables.get('productId')));

@@ -1,0 +1,1 @@
+level: warn, messages: Using "CryptoJS" is deprecated. Use "require('crypto-js')" instead.

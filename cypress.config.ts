@@ -1,6 +1,7 @@
 import { defineConfig } from "cypress";
 import { readFileSync } from "fs";
 import { createHmac } from "crypto";
+import { allureCypress } from "allure-cypress/reporter";
 
 /* Sign an HS256 JWT with Node's built-in crypto — no external lib. We avoid
  * importing `jose` here because it is pure-ESM and Cypress compiles this config
@@ -43,6 +44,10 @@ export default defineConfig({
     baseUrl: "http://localhost:3000",
     setupNodeEvents(on, config) {
       loadEnv();
+
+      // Cypress → Allure: writes allure-results alongside Playwright + Newman,
+      // so one `allure generate` merges all three frameworks into one report.
+      allureCypress(on, config, { resultsDir: "allure-results" });
 
       // Tasks run in Node (not the browser), so they can use secrets + crypto.
       on("task", {

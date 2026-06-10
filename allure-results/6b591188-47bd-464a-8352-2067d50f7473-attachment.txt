@@ -1,0 +1,2 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+pm.test('new group present', () => pm.expect(pm.response.json().groups.map(g=>g.id)).to.include(pm.collectionVariables.get('groupId')));

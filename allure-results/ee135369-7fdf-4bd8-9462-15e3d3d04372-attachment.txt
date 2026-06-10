@@ -1,0 +1,2 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+pm.test('fresh payable balance is 0', () => pm.expect(pm.response.json().vendor.balance).to.eql(0));

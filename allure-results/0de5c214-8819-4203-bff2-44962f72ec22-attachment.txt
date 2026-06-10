@@ -1,0 +1,3 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+const c = pm.response.json().customer;
+pm.test('opening receivable surfaces in balance', () => pm.expect(c.balance).to.eql(1000));

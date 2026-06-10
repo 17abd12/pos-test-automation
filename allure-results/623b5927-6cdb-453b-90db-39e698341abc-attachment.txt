@@ -1,0 +1,1 @@
+pm.test('401 without a token', () => pm.response.to.have.status(401));

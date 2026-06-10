@@ -1,0 +1,2 @@
+pm.test('200 OK', () => pm.response.to.have.status(200));
+pm.test('sets token cookie', () => pm.expect(pm.cookies.has('token')).to.be.true);
