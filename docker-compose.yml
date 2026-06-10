@@ -1,0 +1,49 @@
+# Run each test layer in a container against the POS app on the host.
+#   docker compose run --rm playwright
+#   docker compose run --rm newman
+#   docker compose run --rm k6
+#
+# The app runs on the HOST at :3000; containers reach it via host.docker.internal
+# (the extra_hosts line maps it on Linux). Pass the app's JWT_SECRET in your shell
+# or a .env file next to this compose file.
+
+services:
+  playwright:
+    build: .
+    environment:
+      PW_BASE_URL: http://host.docker.internal:3000
+      JWT_SECRET: ${JWT_SECRET}
+      LOGIN_USER: admin
+      LOGIN_PASS: admin123
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./docs/reports:/tests/docs/reports
+      - ./allure-results:/tests/allure-results
+    command: npm run test:pw
+
+  newman:
+    image: postman/newman:6-alpine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./postman:/etc/newman
+      - ./docs/reports:/etc/newman/reports
+    entrypoint: [""]
+    command: >
+      newman run POS.postman_collection.json -e POS.postman_environment.json
+      --env-var baseUrl=http://host.docker.internal:3000
+      -r cli,htmlextra --reporter-htmlextra-export reports/newman.html
+
+  k6:
+    image: grafana/k6:latest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      BASE_URL: http://host.docker.internal:3000
+      LOGIN_USER: admin
+      LOGIN_PASS: admin123
+    volumes:
+      - ./k6:/scripts
+    working_dir: /scripts
+    command: run login-load.js

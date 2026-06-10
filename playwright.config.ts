@@ -15,7 +15,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: [["html", { open: "never" }], ["list"]],
+  // HTML report committed under docs/ so it can be published (e.g. GitHub Pages).
+  // Allure results feed `npm run report:allure` → docs/reports/allure.
+  reporter: [
+    ["list"],
+    ["html", { open: "never", outputFolder: "docs/reports/playwright" }],
+    ["allure-playwright", { resultsDir: "allure-results" }],
+  ],
 
   use: {
     baseURL: process.env.PW_BASE_URL || "http://localhost:3000",

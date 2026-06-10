@@ -1,7 +1,7 @@
 {
   "name": "pos-test-automation",
   "version": "1.0.0",
-  "description": "End-to-end + API test suite for a Next.js Distribution POS — Cypress, Playwright, and Postman/Newman. (App source not included.)",
+  "description": "End-to-end + API + load test suite for a Next.js Distribution POS — Cypress, Playwright, Postman/Newman, k6. Allure + HTML reports, Dockerized, CI-ready. (App source not included.)",
   "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -9,13 +9,20 @@
     "test:cy:open": "cypress open",
     "test:pw": "playwright test",
     "test:pw:ui": "playwright test --ui",
-    "test:pw:report": "playwright show-report",
+    "test:pw:report": "playwright show-report docs/reports/playwright",
     "tour": "playwright test visual-tour.spec.ts",
-    "test:api": "newman run postman/POS.postman_collection.json -e postman/POS.postman_environment.json -r cli,htmlextra --reporter-htmlextra-export newman/report.html"
+    "test:api": "newman run postman/POS.postman_collection.json -e postman/POS.postman_environment.json -r cli,htmlextra --reporter-htmlextra-export docs/reports/newman.html",
+    "test:load": "k6 run k6/login-load.js",
+    "report:allure": "allure generate allure-results --clean -o docs/reports/allure",
+    "report:allure:open": "allure open docs/reports/allure",
+    "docker:build": "docker build -t pos-tests .",
+    "docker:up": "docker compose up --abort-on-container-exit"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@types/node": "^20",
+    "allure-commandline": "^2.32.0",
+    "allure-playwright": "^3.0.7",
     "cypress": "^15.16.0",
     "dotenv": "^16",
     "newman": "^6.2.1",

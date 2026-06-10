@@ -33,7 +33,8 @@ test.describe("Customers — manager", () => {
     await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
     await expect(page.getByText("Bismillah Traders")).toBeVisible();
     await expect(page.getByText("2 customers")).toBeVisible();
-    await expect(page.getByText("Rs.15,000.00")).toBeVisible();
+    // Rs.15,000.00 appears in several spots (row balance, header total, bucket) — first is enough.
+    await expect(page.getByText("Rs.15,000.00").first()).toBeVisible();
   });
 
   test("filters the list by search text", async ({ page }) => {

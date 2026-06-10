@@ -1,0 +1,9 @@
+node_modules
+test-results
+playwright-report
+allure-results
+docs/reports
+.git
+.env
+cypress/videos
+cypress/screenshots

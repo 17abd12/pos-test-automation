@@ -43,7 +43,8 @@ test.describe("Purchases — new", () => {
     const body = (await req).postDataJSON();
     expect(body).toMatchObject({ vendor_id: "v1", payment: "Credit" });
     expect(body.items[0]).toMatchObject({ inventory_id: "i1", quantity: 1, unit_type: "cartons", cost_price: 8, godam_id: "gd1" });
-    await expect(page.getByText("Purchase Recorded!")).toBeVisible();
+    // heading, not the toast ("Purchase recorded!" matches case-insensitively).
+    await expect(page.getByRole("heading", { name: "Purchase Recorded!" })).toBeVisible();
   });
 
   test("records a cash purchase", async ({ page }) => {

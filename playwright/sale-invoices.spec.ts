@@ -40,8 +40,9 @@ test.describe("Sale invoice — create", () => {
   test("adds a line and computes totals", async ({ page }) => {
     await selectCustomer(page);
     await addProduct(page);
-    await expect(page.getByText("Subtotal: Rs.120.00")).toBeVisible();
-    await expect(page.getByText("Total: Rs.120.00")).toBeVisible();
+    await expect(page.getByText("Subtotal: Rs.120.00", { exact: true })).toBeVisible();
+    // exact: "Total:" is a substring of "Subtotal:" — exact avoids matching both nodes.
+    await expect(page.getByText("Total: Rs.120.00", { exact: true })).toBeVisible();
   });
 
   test("requires a customer", async ({ page }) => {

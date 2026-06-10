@@ -1,21 +1,20 @@
 node_modules/
 
-# secrets / local config
-.env*
+# secrets / local config (templates .env.example + cypress.env.example.json ARE tracked)
+.env
+.env.local
+.env.*.local
 cypress.env.json
 
-# cypress artifacts
+# transient runner output
 cypress/videos/
 cypress/screenshots/
 cypress/downloads/
-
-# playwright artifacts
 test-results/
 playwright-report/
 playwright/.cache/
 blob-report/
+# allure-results/ IS committed so CI (which has Java) can generate the Allure
+# HTML report without needing the app — see .github/workflows/pages.yml.
 
-# newman html report
-newman/
-
-# committed showcase screenshots live in docs/screenshots (NOT ignored)
+# Published, COMMITTED artifacts live under docs/ (screenshots + reports) — NOT ignored.

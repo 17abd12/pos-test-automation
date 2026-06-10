@@ -29,8 +29,9 @@ test.describe("Supplier expenses", () => {
 
   test("renders pending/adjusted state (smoke)", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Supplier Expenses" })).toBeVisible();
-    await expect(page.getByText("Pending")).toBeVisible();
-    await expect(page.getByText("Deducted")).toBeVisible();
+    // exact: the status badges are exactly "Pending"/"Deducted" (stat cards say "Pending Adjustments" / "Deductions Applied").
+    await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+    await expect(page.getByText("Deducted", { exact: true })).toBeVisible();
   });
 
   test("records a new expense", async ({ page }) => {
