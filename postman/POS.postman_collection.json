@@ -1,0 +1,198 @@
+{
+  "info": {
+    "name": "POS Backend API",
+    "description": "Backend tests for the Distribution POS. Runs sequentially with Newman; the cookie jar carries the auth token after Login. Self-cleaning: creates a group + customer with a unique NEWMAN_<ts> prefix and deletes them at the end. Login uses admin/admin123 (from the environment).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login (admin)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "exec": ["pm.collectionVariables.set('ts', Date.now());"], "type": "text/javascript" }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('sets token cookie', () => pm.expect(pm.cookies.has('token')).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
+      }
+    },
+    {
+      "name": "Me (role)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('returns a role', () => pm.expect(pm.response.json().role).to.be.ok);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/me", "host": ["{{baseUrl}}"], "path": ["api", "me"] }
+      }
+    },
+    {
+      "name": "Create Group",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const j = pm.response.json();",
+              "pm.expect(j.group.id, 'group id').to.be.ok;",
+              "pm.collectionVariables.set('groupId', j.group.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_grp\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
+      }
+    },
+    {
+      "name": "List Groups",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('contains our new group', () => {",
+              "  const ids = pm.response.json().groups.map(g => g.id);",
+              "  pm.expect(ids).to.include(pm.collectionVariables.get('groupId'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
+      }
+    },
+    {
+      "name": "Create Customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const j = pm.response.json();",
+              "pm.collectionVariables.set('customerId', j.customer.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_cust\",\n  \"group_id\": \"{{groupId}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+      }
+    },
+    {
+      "name": "Get Customer (balance 0)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('fresh customer has zero balance', () => pm.expect(pm.response.json().customer.balance).to.eql(0));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
+      }
+    },
+    {
+      "name": "Rename Customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('name updated', () => pm.expect(pm.response.json().customer.name).to.include('renamed'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"NEWMAN_{{ts}}_renamed\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
+      }
+    },
+    {
+      "name": "Delete Customer (cleanup)",
+      "event": [
+        {
+          "listen": "test",
+          "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customerId}}"] }
+      }
+    },
+    {
+      "name": "Delete Group (cleanup)",
+      "event": [
+        {
+          "listen": "test",
+          "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{groupId}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "ts", "value": "" },
+    { "key": "groupId", "value": "" },
+    { "key": "customerId", "value": "" }
+  ]
+}

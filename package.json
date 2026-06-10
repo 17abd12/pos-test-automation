@@ -1,0 +1,25 @@
+{
+  "name": "pos-test-automation",
+  "version": "1.0.0",
+  "description": "End-to-end + API test suite for a Next.js Distribution POS — Cypress, Playwright, and Postman/Newman. (App source not included.)",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:cy": "cypress run",
+    "test:cy:open": "cypress open",
+    "test:pw": "playwright test",
+    "test:pw:ui": "playwright test --ui",
+    "test:pw:report": "playwright show-report",
+    "tour": "playwright test visual-tour.spec.ts",
+    "test:api": "newman run postman/POS.postman_collection.json -e postman/POS.postman_environment.json -r cli,htmlextra --reporter-htmlextra-export newman/report.html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^20",
+    "cypress": "^15.16.0",
+    "dotenv": "^16",
+    "newman": "^6.2.1",
+    "newman-reporter-htmlextra": "^1.23.1",
+    "typescript": "^5"
+  }
+}

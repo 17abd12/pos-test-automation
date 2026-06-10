@@ -1,0 +1,21 @@
+node_modules/
+
+# secrets / local config
+.env*
+cypress.env.json
+
+# cypress artifacts
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# playwright artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# newman html report
+newman/
+
+# committed showcase screenshots live in docs/screenshots (NOT ignored)

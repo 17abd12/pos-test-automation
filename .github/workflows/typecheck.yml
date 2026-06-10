@@ -1,0 +1,21 @@
+name: typecheck
+
+# Standalone CI that runs without the app or a DB: installs deps and
+# type-checks the specs. A full E2E workflow would also spin up the POS app
+# + Supabase — see README "Possible next steps".
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
